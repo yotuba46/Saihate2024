@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>最果ての迷宮 - ログイン</title>
+  <script src="https://www.gstatic.com/firebasejs/8.2.4/firebase-app.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/8.2.4/firebase-auth.js"></script>
+  <script>
+  // Firebaseの設定
+  var firebaseConfig = {
+    apiKey: "AIzaSyAIrCemAgmWxSwmHcIrPaXI8zUp74mADw4",
+    authDomain: "saihate2024.firebaseapp.com",
+    projectId: "saihate2024",
+    storageBucket: "saihate2024.appspot.com",
+    messagingSenderId: "305058526241",
+    appId: "1:305058526241:web:761b3f8f23994a20f0df60",
+    measurementId: "G-NGBKYJ695T"
+  };
+  // Firebaseの初期化
+  firebase.initializeApp(firebaseConfig);
+  </script>
+
+</head>
+<body>
+  <h1>新規登録</h1>
+  <div>
+    <input type="email" id="email" placeholder="メールアドレス" required>
+    <input type="password" id="password" placeholder="パスワード" required>
+    <button id="signupBtn">登録</button>
+  </div>
+
+  <div>
+    <p>既に登録している方はこちら</p>
+    <button id="goToLoginBtn">ログイン</button>
+  </div>
+
+  <script>
+    // 登録処理
+    document.getElementById('signupBtn').addEventListener('click', () => {
+      const email = document.getElementById('email').value.trim();
+      const password = document.getElementById('password').value;
+
+      firebase.auth().createUserWithEmailAndPassword(email, password)
+        .then((userCredential) => {
+          const user = userCredential.user;
+          return user.sendEmailVerification();
+        })
+        .then(() => {
+          alert('確認メールを送信しました。メールを確認してからログインしてください。');
+          firebase.auth().signOut();
+          window.location.href = 'login.html';
+        })
+        .catch((error) => {
+          console.error('登録失敗', error);
+          alert('登録に失敗しました。メールアドレスとパスワードを確認してください。');
+        });
+    });
+
+    // ログイン画面への遷移
+    document.getElementById('goToLoginBtn').addEventListener('click', () => {
+      window.location.href = 'login.html';
+    });
+  </script>
+</body>
+</html>

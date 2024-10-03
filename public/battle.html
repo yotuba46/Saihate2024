@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>戦闘画面</title>
+</head>
+<body>
+  <h1>戦闘開始！</h1>
+
+  <div id="status"></div>
+
+  <div>
+    <h2>コマンドを選択</h2>
+    <button onclick="sendCommand('attack')">攻撃</button>
+    <button onclick="sendCommand('defend')">防御</button>
+    <button onclick="sendCommand('magic')">魔法</button>
+  </div>
+
+  <div id="battleLog"></div>
+
+  <!-- Socket.IOのクライアントライブラリを読み込み -->
+  <script src="/socket.io/socket.io.js"></script>
+  <script>
+    const socket = io();
+
+    function sendCommand(command) {
+      socket.emit('battleCommand', command);
+      document.getElementById('status').innerText = `コマンド「${command}」を送信しました。`;
+    }
+
+    socket.on('battleResult', (result) => {
+      document.getElementById('battleLog').innerHTML += `<p>${result}</p>`;
+    });
+  </script>
+</body>
+</html>

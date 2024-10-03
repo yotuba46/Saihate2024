@@ -1,0 +1,510 @@
+<!-- public/main.html -->
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>最果ての迷宮 - メイン</title>
+  <script src="https://www.gstatic.com/firebasejs/8.2.4/firebase-app.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/8.2.4/firebase-auth.js"></script>
+  <script src="/socket.io/socket.io.js"></script>
+  <script>
+  // Firebaseの設定
+  var firebaseConfig = {
+    apiKey: "AIzaSyAIrCemAgmWxSwmHcIrPaXI8zUp74mADw4",
+    authDomain: "saihate2024.firebaseapp.com",
+    projectId: "saihate2024",
+    storageBucket: "saihate2024.appspot.com",
+    messagingSenderId: "305058526241",
+    appId: "1:305058526241:web:761b3f8f23994a20f0df60",
+    measurementId: "G-NGBKYJ695T"
+  };
+  // Firebaseの初期化
+    firebase.initializeApp(firebaseConfig);
+
+    // 認証状態の監視とSocket.IOの接続
+    firebase.auth().onAuthStateChanged(user => {
+      if (user) {
+        user.getIdToken().then(token => {
+          // Socket.IOの接続時にトークンを送信
+          const socket = io({
+            query: {
+              token: token
+            }
+          });
+
+          // 接続成功時のログ
+          socket.on('connect', () => {
+            console.log('Socket.IO connected');
+            // 過去メッセージのリクエスト
+            socket.emit('requestPreviousMessages');
+          });
+
+          // 接続エラー時のログ
+          socket.on('connect_error', (error) => {
+            console.error('Socket.IO connection error:', error);
+            alert('ユーザー情報の取得中にエラーが発生しました。');
+            window.location.href = 'login.html';
+          });
+
+          // 過去メッセージの受信
+          socket.on('previousMessages', (data) => {
+            console.log('過去のメッセージを受信:', data);
+            // メッセージ表示のロジック
+            data.messages.forEach(message => {
+              displayMessage(message);
+            });
+          });
+
+          // 新しいメッセージの受信
+          socket.on('receiveMessage', (messageData) => {
+            console.log('新しいメッセージを受信:', messageData);
+            displayMessage(messageData);
+          });
+
+          // エラーメッセージの受信
+          socket.on('errorMessage', (errorMsg) => {
+            console.error('サーバーからのエラーメッセージ:', errorMsg);
+            alert(errorMsg);
+          });
+
+          // メッセージ送信関数
+          window.sendMessage = function(messageText) {
+            if (messageText.trim() === '') return;
+            socket.emit('sendMessage', messageText);
+          };
+
+          // メッセージ表示関数
+          window.displayMessage = function(message) {
+            const messagesList = document.getElementById('messagesList');
+            const li = document.createElement('li');
+            li.textContent = `[${new Date(message.timestamp).toLocaleTimeString()}] ${message.displayName}: ${message.message}`;
+            messagesList.appendChild(li);
+          };
+        }).catch(err => {
+          console.error('トークン取得エラー:', err);
+          alert('ユーザー情報の取得中にエラーが発生しました。');
+          window.location.href = 'login.html';
+        });
+      } else {
+        // ログインしていない場合、login.html にリダイレクト
+        window.location.href = 'login.html';
+      }
+    });
+  </script>
+</head>
+<body>
+  <h1>最果ての迷宮</h1>
+  <button id="logoutBtn">ログアウト</button>
+
+  <!-- 全体チャットエリア -->
+  <div>
+    <h2>全体チャット</h2>
+    <div id="chatMessages" style="border: 1px solid #ccc; height: 300px; overflow-y: scroll; padding: 10px;">
+      <!-- メッセージがここに表示されます -->
+    </div>
+    <input type="text" id="chatInput" placeholder="メッセージを入力" style="width: 80%;">
+    <button id="sendBtn">送信</button>
+  </div>
+
+  <!-- 部屋作成フォーム -->
+  <div id="roomCreationSection">
+    <h2>部屋の作成</h2>
+    <input type="text" id="roomNameInput" placeholder="部屋の名前" required>
+    <button id="createRoomBtn">部屋を作成</button>
+  </div>
+
+  <!-- 部屋一覧 -->
+  <div id="roomListSection">
+    <h2>参加可能な部屋</h2>
+    <ul id="roomList">
+      <!-- 部屋のリストがここに表示されます -->
+    </ul>
+  </div>
+
+  <!-- 部屋内ユーザー表示 -->
+  <div id="currentRoomSection" style="display: none;">
+    <h2 id="currentRoomName">現在の部屋: </h2>
+    <button id="leaveRoomBtn">部屋を退出</button>
+    <h3>参加者一覧</h3>
+    <ul id="roomUsersList">
+      <!-- 部屋内のユーザーリストがここに表示されます -->
+    </ul>
+
+    <!-- 部屋内チャット -->
+    <div id="roomChatSection">
+      <h3>部屋内チャット</h3>
+      <div id="roomChatMessages" style="border: 1px solid #ccc; height: 200px; overflow-y: scroll; padding: 10px;">
+        <!-- チャットメッセージがここに表示されます -->
+      </div>
+      <input type="text" id="roomChatInput" placeholder="メッセージを入力" style="width: 80%;">
+      <button id="sendRoomMessageBtn">送信</button>
+    </div>
+  </div>
+
+  <script>
+    // エスケープ関数の定義（XSS対策）
+    function escapeHtml(text) {
+      const map = {
+        '&': '&amp;',
+        '<': '&lt;',
+        '>': '&gt;',
+        '"': '&quot;',
+        "'": '&#039;',
+      };
+      return text.replace(/[&<>"']/g, (m) => map[m]);
+    }
+
+    // 現在の部屋名を追跡する変数
+    let currentRoom = '';
+
+    // Firebase認証状態の監視
+    firebase.auth().onAuthStateChanged(async (user) => {
+      if (user && user.emailVerified) {
+        if (user.displayName && user.displayName.trim() !== '') {
+          // メールアドレスとユーザー名が確認済みの場合
+
+          // トークンを取得してサーバーに接続
+          const token = await user.getIdToken(/* forceRefresh */ true);
+          const socket = io({
+            query: {
+              token: token,
+            },
+          });
+
+          // 過去のメッセージを受信
+          socket.on('previousMessages', (messages) => {
+            const chatMessages = document.getElementById('chatMessages');
+            chatMessages.innerHTML = ''; // 既存のメッセージをクリア
+            messages.forEach((data) => {
+              const newMessage = document.createElement('p');
+              const safeMessage = escapeHtml(data.message);
+              const safeDisplayName = escapeHtml(data.displayName);
+              newMessage.innerHTML = `<strong>${safeDisplayName}:</strong> ${safeMessage}`;
+              chatMessages.appendChild(newMessage);
+            });
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+          });
+
+          // メッセージの送信
+          document.getElementById('sendBtn').addEventListener('click', () => {
+            let message = document.getElementById('chatInput').value;
+            if (message.trim() !== '') {
+              if (message.length > 200) {
+                alert('メッセージは200文字以内で入力してください。');
+                return;
+              }
+              socket.emit('sendMessage', message);
+              document.getElementById('chatInput').value = ''; // 入力フィールドをクリア
+            }
+          });
+
+          // エンターキーでの送信対応
+          document.getElementById('chatInput').addEventListener('keydown', (event) => {
+            if (event.key === 'Enter') {
+              event.preventDefault(); // フォームの送信を防止
+              document.getElementById('sendBtn').click();
+            }
+          });
+
+          // メッセージの受信
+          socket.on('receiveMessage', (data) => {
+            const chatMessages = document.getElementById('chatMessages');
+            const newMessage = document.createElement('p');
+            const safeMessage = escapeHtml(data.message);
+            const safeDisplayName = escapeHtml(data.displayName);
+            newMessage.innerHTML = `<strong>${safeDisplayName}:</strong> ${safeMessage}`;
+            chatMessages.appendChild(newMessage);
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+          });
+
+          // 部屋作成ボタンのイベントリスナー
+          document.getElementById('createRoomBtn').addEventListener('click', async () => {
+            const roomName = document.getElementById('roomNameInput').value.trim();
+            if (roomName === '') {
+              alert('部屋名を入力してください。');
+              return;
+            }
+
+            try {
+              const token = await firebase.auth().currentUser.getIdToken(/* forceRefresh */ true); // トークンを取得
+
+              const response = await fetch('/create-room', {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                  'Authorization': `Bearer ${token}`, // 認証トークンをヘッダーに含める
+                },
+                body: JSON.stringify({ name: roomName }),
+              });
+
+              const result = await response.json();
+              if (result.success) {
+                alert('部屋が作成されました。');
+                loadRooms(); // 部屋一覧を再読み込み
+              } else {
+                alert(`部屋作成失敗: ${result.message}`);
+              }
+            } catch (error) {
+              console.error('部屋作成エラー:', error);
+              alert('部屋作成中にエラーが発生しました。');
+            }
+          });
+
+          // 部屋一覧のロード関数
+          async function loadRooms() {
+            try {
+              const response = await fetch('/rooms/list');
+              const data = await response.json();
+              if (data.success) {
+                const roomList = document.getElementById('roomList');
+                roomList.innerHTML = ''; // 既存のリストをクリア
+
+                data.rooms.forEach(room => {
+                  const li = document.createElement('li');
+                  li.textContent = `${room.name} (${room.users.length}人参加中)`;
+
+                  // 参加ボタン
+                  const joinBtn = document.createElement('button');
+                  joinBtn.textContent = '参加';
+                  joinBtn.style.marginLeft = '10px';
+                  joinBtn.addEventListener('click', () => {
+                    joinRoom(room.name);
+                  });
+                  li.appendChild(joinBtn);
+
+                  // 削除ボタン（部屋作成者のみ表示）
+                  if (room.creatorUid === user.uid || user.isAdmin) {
+                    const deleteBtn = document.createElement('button');
+                    deleteBtn.textContent = '削除';
+                    deleteBtn.style.marginLeft = '10px';
+                    deleteBtn.addEventListener('click', async () => {
+                      if (confirm(`部屋 "${room.name}" を削除しますか？`)) {
+                        try {
+                          const deleteResponse = await fetch(`/delete-room/${encodeURIComponent(room.name)}`, {
+                            method: 'DELETE',
+                            headers: {
+                              'Authorization': `Bearer ${token}`,
+                            },
+                          });
+                          const deleteResult = await deleteResponse.json();
+                          if (deleteResult.success) {
+                            alert('部屋が削除されました。');
+                            loadRooms(); // 部屋一覧を再読み込み
+                          } else {
+                            alert(`削除失敗: ${deleteResult.message}`);
+                          }
+                        } catch (error) {
+                          console.error('部屋削除エラー:', error);
+                          alert('部屋削除中にエラーが発生しました。');
+                        }
+                      }
+                    });
+                    li.appendChild(deleteBtn);
+                  }
+
+                  roomList.appendChild(li);
+                });
+              } else {
+                alert('部屋一覧の取得に失敗しました。');
+              }
+            } catch (error) {
+              console.error('部屋一覧取得エラー:', error);
+              alert('部屋一覧の取得中にエラーが発生しました。');
+            }
+          }
+
+          // 初期ロード
+          loadRooms();
+
+          // 部屋参加関数
+          function joinRoom(roomName) {
+            socket.emit('joinRoom', roomName);
+            currentRoom = roomName; // 現在の部屋名を更新
+            window.location.href = `room.html?room=${encodeURIComponent(roomName)}`;
+          }
+
+          // 部屋参加成功時のハンドリング
+          socket.on('joinedRoom', (roomName) => {
+            socket.emit('requestPreviousMessages', roomName);
+            document.getElementById('roomCreationSection').style.display = 'none';
+            document.getElementById('roomListSection').style.display = 'none';
+            document.getElementById('currentRoomSection').style.display = 'block';
+            document.getElementById('currentRoomName').textContent = `現在の部屋: ${roomName}`;
+          });
+
+          // 部屋内のユーザー一覧の更新
+          socket.on('roomUsers', (users) => {
+            console.log('roomUsers データ受信:', users); // デバッグ用ログ
+            const roomUsersList = document.getElementById('roomUsersList');
+            roomUsersList.innerHTML = ''; // 既存のリストをクリア
+
+            users.forEach(user => {
+              const li = document.createElement('li');
+              li.textContent = user.username;
+
+              // キックボタン（部屋作成者のみ）
+              if (currentRoomCreatorUid === user.uid || user.isAdmin) {
+                const kickBtn = document.createElement('button');
+                kickBtn.textContent = 'キック';
+                kickBtn.style.marginLeft = '10px';
+                kickBtn.addEventListener('click', () => {
+                  kickUser(roomName, user.uid);
+                });
+                li.appendChild(kickBtn);
+              }
+
+              roomUsersList.appendChild(li);
+            });
+
+            // 参加者数の表示を更新
+            const participantCount = users.length;
+            document.getElementById('currentRoomName').textContent = `現在の部屋: ${currentRoom} (${participantCount}人参加中)`;
+          });
+
+          // 部屋内チャットメッセージの受信
+          socket.on('receiveRoomMessage', (data) => {
+            const chatMessages = document.getElementById('roomChatMessages');
+            const p = document.createElement('p');
+            p.innerHTML = `<strong>${escapeHtml(data.username)}:</strong> ${escapeHtml(data.message)}`;
+            chatMessages.appendChild(p);
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+          });
+
+          // エラーメッセージの受信
+          socket.on('errorMessage', (msg) => {
+            alert(msg);
+          });
+
+          // 部屋への退出
+          document.getElementById('leaveRoomBtn').addEventListener('click', () => {
+            if (currentRoom === '') {
+              alert('参加している部屋がありません。');
+              return;
+            }
+            socket.emit('leaveRoom', currentRoom);
+            currentRoom = ''; // 現在の部屋名をリセット
+            window.location.href = 'main.html';
+          });
+
+          // 部屋退出成功時のハンドリング
+          socket.on('leftRoom', (roomName) => {
+            document.getElementById('roomCreationSection').style.display = 'block';
+            document.getElementById('roomListSection').style.display = 'block';
+            document.getElementById('currentRoomSection').style.display = 'none';
+            document.getElementById('currentRoomName').textContent = '現在の部屋: ';
+            loadRooms();
+          });
+
+          // 部屋内チャット送信
+          document.getElementById('sendRoomMessageBtn').addEventListener('click', () => {
+            if (currentRoom === '') {
+              alert('参加している部屋がありません。');
+              return;
+            }
+            const message = document.getElementById('roomChatInput').value.trim();
+            if (message === '') {
+              alert('メッセージを入力してください。');
+              return;
+            }
+
+            socket.emit('roomMessage', { roomName: currentRoom, message: message });
+            document.getElementById('roomChatInput').value = '';
+          });
+
+          // リアルタイムで新しい部屋が追加された場合に部屋リストを更新
+          socket.on('newRoom', (room) => {
+            const roomList = document.getElementById('roomList');
+
+            const li = document.createElement('li');
+            li.textContent = `${room.name} (${room.users}人参加中)`;
+            const joinBtn = document.createElement('button');
+            joinBtn.textContent = '参加';
+            joinBtn.style.marginLeft = '10px';
+            joinBtn.addEventListener('click', () => {
+              joinRoom(room.name);
+            });
+            li.appendChild(joinBtn);
+
+            // 削除ボタン（部屋作成者のみ）
+            if (room.creatorUid === user.uid || user.isAdmin) {
+              const deleteBtn = document.createElement('button');
+              deleteBtn.textContent = '削除';
+              deleteBtn.style.marginLeft = '10px';
+              deleteBtn.addEventListener('click', async () => {
+                if (confirm(`部屋 "${room.name}" を削除しますか？`)) {
+                  try {
+                    const deleteResponse = await fetch(`/delete-room/${encodeURIComponent(room.name)}`, {
+                      method: 'DELETE',
+                      headers: {
+                        'Authorization': `Bearer ${token}`,
+                      },
+                    });
+                    const deleteResult = await deleteResponse.json();
+                    if (deleteResult.success) {
+                      alert('部屋が削除されました。');
+                      loadRooms(); // 部屋一覧を再読み込み
+                    } else {
+                      alert(`削除失敗: ${deleteResult.message}`);
+                    }
+                  } catch (error) {
+                    console.error('部屋削除エラー:', error);
+                    alert('部屋削除中にエラーが発生しました。');
+                  }
+                }
+              });
+              li.appendChild(deleteBtn);
+            }
+
+            roomList.appendChild(li);
+          });
+
+          // 部屋が削除された場合のハンドリング
+          socket.on('roomDeleted', (room) => {
+            alert(`部屋 "${room.name}" が削除されました。`);
+            loadRooms(); // 部屋一覧を再読み込み
+            if (currentRoom === room.name) {
+              // 現在参加している部屋が削除された場合の処理
+              document.getElementById('roomCreationSection').style.display = 'block';
+              document.getElementById('roomListSection').style.display = 'block';
+              document.getElementById('currentRoomSection').style.display = 'none';
+              document.getElementById('currentRoomName').textContent = '現在の部屋: ';
+              currentRoom = '';
+              window.location.href = 'main.html';
+            }
+          });
+        } else {
+          // ユーザー名が未設定の場合、初期設定画面にリダイレクト
+          window.location.href = 'set_initial_settings.html';
+        }
+      } else {
+        // 認証されていない場合、ログインページにリダイレクト
+        window.location.href = 'login.html';
+      }
+    });
+
+    // キックユーザー関数
+    async function kickUser(roomName, userIdToKick) {
+      try {
+        const token = await firebase.auth().currentUser.getIdToken(/* forceRefresh */ true);
+        const response = await fetch('/kick-user', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`,
+          },
+          body: JSON.stringify({ roomName: roomName, userIdToKick: userIdToKick }),
+        });
+        const result = await response.json();
+        if (result.success) {
+          alert('ユーザーがキックされました。');
+        } else {
+          alert(`キック失敗: ${result.message}`);
+        }
+      } catch (error) {
+        console.error('ユーザーキックエラー:', error);
+        alert('ユーザーキック中にエラーが発生しました。');
+      }
+    }
+  </script>
+</body>
+</html>

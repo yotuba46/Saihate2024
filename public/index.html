@@ -1,0 +1,40 @@
+<!-- public/index.html -->
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>リダイレクト中...</title>
+  <script src="https://www.gstatic.com/firebasejs/8.2.4/firebase-app.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/8.2.4/firebase-auth.js"></script>
+  <script>
+  // Firebaseの設定
+  var firebaseConfig = {
+    apiKey: "AIzaSyAIrCemAgmWxSwmHcIrPaXI8zUp74mADw4",
+    authDomain: "saihate2024.firebaseapp.com",
+    projectId: "saihate2024",
+    storageBucket: "saihate2024.appspot.com",
+    messagingSenderId: "305058526241",
+    appId: "1:305058526241:web:761b3f8f23994a20f0df60",
+    measurementId: "G-NGBKYJ695T"
+  };
+  // Firebase の初期化
+  firebase.initializeApp(firebaseConfig);
+
+  // ページ読み込み後に認証状態をチェック
+  window.onload = function() {
+    firebase.auth().onAuthStateChanged(function(user) {
+      if (user && user.emailVerified) {
+        // ユーザーがログインしており、メールが確認済みの場合
+        window.location.href = 'main.html';
+      } else {
+        // ユーザーがログインしていない、もしくはメールが未確認の場合
+        window.location.href = 'login.html';
+      }
+    });
+  };
+</script>
+</head>
+<body>
+<h1>リダイレクト中...</h1>
+</body>
+</html>

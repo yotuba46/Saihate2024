@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>最果ての迷宮 - ログイン</title>
+  <script src="https://www.gstatic.com/firebasejs/8.2.4/firebase-app.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/8.2.4/firebase-auth.js"></script>
+  <script>
+  // Firebaseの設定
+  var firebaseConfig = {
+    apiKey: "AIzaSyAIrCemAgmWxSwmHcIrPaXI8zUp74mADw4",
+    authDomain: "saihate2024.firebaseapp.com",
+    projectId: "saihate2024",
+    storageBucket: "saihate2024.appspot.com",
+    messagingSenderId: "305058526241",
+    appId: "1:305058526241:web:761b3f8f23994a20f0df60",
+    measurementId: "G-NGBKYJ695T"
+  };
+  // Firebaseの初期化
+  firebase.initializeApp(firebaseConfig);
+  </script>
+  
+</head>
+<body>
+  <h1>最果ての迷宮へようこそ</h1>
+  <div>
+    <h2>ログイン</h2>
+    <input type="email" id="email" placeholder="メールアドレス" required>
+    <input type="password" id="password" placeholder="パスワード" required>
+    <button id="loginBtn">ログイン</button>
+  </div>
+
+  <div>
+    <p>まだ登録していない方はこちら</p>
+    <button id="goToRegisterBtn">新規登録</button>
+  </div>
+
+  <script>
+    // ログイン処理
+    document.getElementById('loginBtn').addEventListener('click', () => {
+      const email = document.getElementById('email').value.trim();
+      const password = document.getElementById('password').value;
+
+      firebase.auth().signInWithEmailAndPassword(email, password)
+        .then((userCredential) => {
+          const user = userCredential.user;
+          if (user.emailVerified) {
+            if (user.displayName && user.displayName.trim() !== '') {
+              // ユーザー名が設定されている場合、メイン画面にリダイレクト
+              window.location.href = 'main.html';
+            } else {
+              // ユーザー名が未設定の場合、初期設定画面にリダイレクト
+              window.location.href = 'set_initial_settings.html';
+            }
+          } else {
+            alert('メールアドレスが確認されていません。確認メールをご確認ください。');
+            firebase.auth().signOut();
+          }
+        })
+        .catch((error) => {
+          console.error('ログイン失敗', error);
+          alert('ログインに失敗しました。メールアドレスとパスワードを確認してください。');
+        });
+    });
+
+    // 新規登録画面への遷移
+    document.getElementById('goToRegisterBtn').addEventListener('click', () => {
+      window.location.href = 'register.html';
+    });
+  </script>
+</body>
+</html>

@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>最果ての迷宮 - ログイン</title>
+  <script src="https://www.gstatic.com/firebasejs/8.2.4/firebase-app.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/8.2.4/firebase-auth.js"></script>
+  <script>
+  // Firebaseの設定
+  var firebaseConfig = {
+    apiKey: "AIzaSyAIrCemAgmWxSwmHcIrPaXI8zUp74mADw4",
+    authDomain: "saihate2024.firebaseapp.com",
+    projectId: "saihate2024",
+    storageBucket: "saihate2024.appspot.com",
+    messagingSenderId: "305058526241",
+    appId: "1:305058526241:web:761b3f8f23994a20f0df60",
+    measurementId: "G-NGBKYJ695T"
+  };
+  // Firebaseの初期化
+  firebase.initializeApp(firebaseConfig);
+  </script>
+</head>
+<body>
+  <h1>初期設定</h1>
+  <div>
+    <input type="text" id="username" placeholder="ユーザー名" required>
+    <button id="setUsernameBtn">設定</button>
+  </div>
+
+  <div>
+    <p>既にユーザー名を設定済みの方はこちら</p>
+    <button id="goToLoginBtn">ログイン</button>
+  </div>
+
+  <script>
+    // 初期設定処理
+    document.getElementById('setUsernameBtn').addEventListener('click', () => {
+      const user = firebase.auth().currentUser;
+      if (user) {
+        const username = document.getElementById('username').value.trim();
+
+        // ユーザー名のバリデーション
+        if (username === '' || username.length > 20) {
+          alert('ユーザー名は1〜20文字で入力してください。');
+          return;
+        }
+
+        // ユーザー名の一意性を確認
+        checkUsernameUnique(username)
+          .then((isUnique) => {
+            if (isUnique) {
+              // ユーザープロフィールにユーザー名を設定
+              return user.updateProfile({
+                displayName: username
+              });
+            } else {
+              alert('このユーザー名は既に使用されています。別のユーザー名を選択してください。');
+              throw new Error('ユーザー名が重複しています');
+            }
+          })
+          .then(() => {
+            // サーバーにユーザー情報を保存
+            return saveUserInfo(user.uid, username);
+          })
+          .then(() => {
+            alert('ユーザー名が設定されました。');
+            window.location.href = 'main.html';
+          })
+          .catch((error) => {
+            console.error('エラー:', error);
+            if (error.message !== 'ユーザー名が重複しています') {
+              alert('エラーが発生しました。時間をおいて再度お試しください。');
+            }
+          });
+      } else {
+        // ユーザーがログインしていない場合
+        window.location.href = 'login.html';
+      }
+    });
+
+    // ユーザー名の一意性を確認する関数
+    function checkUsernameUnique(username) {
+      return fetch('/check-username', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ username: username })
+      })
+      .then(response => response.json())
+      .then(data => data.isUnique)
+      .catch(error => {
+        console.error('ユーザー名の確認に失敗しました:', error);
+        return false;
+      });
+    }
+
+    // ユーザー情報をサーバーに保存する関数
+    function saveUserInfo(uid, username) {
+      return fetch('/save-user', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ uid: uid, username: username })
+      })
+      .then(response => response.json())
+      .then(data => {
+        if (!data.success) {
+          throw new Error('ユーザー情報の保存に失敗しました');
+        }
+      });
+    }
+
+    // ログイン画面への遷移
+    document.getElementById('goToLoginBtn').addEventListener('click', () => {
+      window.location.href = 'login.html';
+    });
+
+    // ログイン状態の監視
+    firebase.auth().onAuthStateChanged((user) => {
+      if (user) {
+        if (user.emailVerified) {
+          if (user.displayName && user.displayName.trim() !== '') {
+            // ユーザー名が既に設定されている場合、メイン画面にリダイレクト
+            window.location.href = 'main.html';
+          }
+        } else {
+          alert('メールアドレスが確認されていません。確認メールをご確認ください。');
+          firebase.auth().signOut();
+          window.location.href = 'login.html';
+        }
+      } else {
+        // ユーザーがログインしていない場合、ログイン画面にリダイレクト
+        window.location.href = 'login.html';
+      }
+    });
+  </script>
+</body>
+</html>
